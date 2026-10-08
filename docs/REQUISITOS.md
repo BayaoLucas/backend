@@ -1,6 +1,6 @@
 # Requisitos de referência do projeto
 
-Este backend entrega apenas a Sprint 2. A lista abaixo documenta os requisitos do projeto completo; não significa que todos estejam implementados. Os IDs e as marcações são os do PDF: E = explícito conforme classificação do documento, D = derivado, P = proposta. A revisão usa o PDF fornecido como referência, sem afirmar ter conferido o enunciado original citado nele.
+Este backend entrega apenas a Sprint 2.
 
 As propostas, incluindo o limite de 10% de desconto, permanecem a validar com o professor. Esta entrega não implementa login, permissões, descontos, carrinho, cancelamento ou telas.
 
