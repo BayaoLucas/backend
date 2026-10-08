@@ -18,7 +18,7 @@ Abra o arquivo .env incluído e configure os MESMOS dados da conexão do MySQL W
 
 ```env
 DB_HOST=localhost
-DB_PORT=3306
+DB_PORT=3307
 DB_USER=root
 DB_PASSWORD="SUA_SENHA_REAL_DO_MYSQL"
 DB_NAME=ms2_vestuario
