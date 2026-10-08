@@ -1,0 +1,28 @@
+{
+  "name": "ms2-vestuario-sprint2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sprint 2: setup, conexão MySQL, interfaces e models",
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "check:db": "tsx src/scripts/verificarBanco.ts",
+    "test": "npm run build && node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.24.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
