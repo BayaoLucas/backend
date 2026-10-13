@@ -1,8 +1,18 @@
+
 export type PerfilUsuario = 'CAIXA' | 'GERENTE';
-export type FormaPagamento = 'DINHEIRO' | 'PIX' | 'DEBITO' | 'CREDITO';
-export type StatusVenda = 'CONCLUIDA' | 'CANCELADA';
+
+export type FormaPagamento =
+  | 'DINHEIRO'
+  | 'PIX'
+  | 'DEBITO'
+  | 'CREDITO';
+
+export type StatusVenda =
+  | 'CONCLUIDA'
+  | 'CANCELADA';
+
 export type Ativo = 0 | 1;
-// MySQL2 retorna DECIMAL como texto. Exemplo: '49.90'.
+
 export type Decimal = string;
 
 export interface Usuario {
@@ -14,7 +24,7 @@ export interface Usuario {
   ativo: Ativo;
   criado_em: Date;
 }
-// O model recebe o hash pronto. Gerar o hash e autenticar são tarefas da Sprint 3.
+
 export interface NovoUsuario {
   nome: string;
   email: string;
@@ -31,6 +41,7 @@ export interface Cliente {
   ativo: Ativo;
   criado_em: Date;
 }
+
 export interface NovoCliente {
   nome: string;
   cpf: string;
@@ -50,6 +61,7 @@ export interface Produto {
   ativo: Ativo;
   criado_em: Date;
 }
+
 export interface NovoProduto {
   codigo: string;
   nome: string;
@@ -76,8 +88,7 @@ export interface Venda {
   cancelada_em: Date | null;
   motivo_cancelamento: string | null;
 }
-// Entrada interna de persistência; não é um corpo de requisição HTTP.
-// A Sprint 3 calculará subtotal e verificará usuário/autorizador antes de chamar o model.
+
 export interface NovaVenda {
   cliente_id?: number | null;
   usuario_id: number;
@@ -97,6 +108,7 @@ export interface ItemVenda {
   preco_unitario: Decimal;
   total_item: Decimal;
 }
+
 export interface NovoItemVenda {
   venda_id: number;
   produto_id: number;
