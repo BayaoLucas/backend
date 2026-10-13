@@ -7,6 +7,8 @@ import { VendaModel } from '../models/VendaModel';
 import { ItemVendaModel } from '../models/ItemVendaModel';
 import { encerrarSessao, iniciarSessao } from '../services/sessao';
 import { cancelarVenda, finalizarVenda } from '../services/vendas';
+
+
 import {
   exigirGerente,
   exigirLogin,
@@ -60,6 +62,8 @@ router.post('/auth/login', async (req, res) => {
 });
 
 router.use(exigirLogin);
+
+
 
 router.get('/auth/me', (req, res) => {
   res.json(usuarioPublico(usuarioAtual(req)));
