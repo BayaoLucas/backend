@@ -1,305 +1,367 @@
-import { Router, Request, Response } from 'express';
+
+import { Router } from 'express';
 import { ClienteModel } from '../models/ClienteModel';
 import { ProdutoModel } from '../models/ProdutoModel';
 import { UsuarioModel } from '../models/UsuarioModel';
 import { VendaModel } from '../models/VendaModel';
 import { ItemVendaModel } from '../models/ItemVendaModel';
-import { withTransaction } from '../config/database';
+import { encerrarSessao, iniciarSessao } from '../services/sessao';
+import { cancelarVenda, finalizarVenda } from '../services/vendas';
+import {
+  exigirGerente,
+  exigirLogin,
+  tokenAtual,
+  usuarioAtual,
+  usuarioPublico
+} from '../middleware/autenticacao';
+import { ErroHttp } from '../utils/erros';
+import { gerarHashSenha, verificarSenha } from '../utils/senha';
+import {
+  apenasCampos,
+  dadosCliente,
+  dadosProduto,
+  dadosUsuario,
+  email,
+  idParametro,
+  objeto,
+  texto
+} from '../utils/validacao';
 
 export const router = Router();
 
-function obterId(req: Request): number {
-  const id = Number(req.params.id);
+// AUTENTICAÇÃO
 
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new Error('ID inválido.');
+router.post('/auth/login', async (req, res) => {
+  const d = objeto(req.body);
+  apenasCampos(d, ['email', 'senha']);
+
+  const endereco = email(d);
+
+  if (typeof d.senha !== 'string') {
+    throw new ErroHttp(400, 'Informe a senha.');
   }
 
-  return id;
-}
+  const usuario = await UsuarioModel.findByEmail(endereco);
 
-function erro(res: Response, e: unknown): void {
-  const mensagem = e instanceof Error ? e.message : 'Erro interno.';
-  const codigo = (e as { code?: string })?.code;
+  if (
+    !usuario ||
+    Number(usuario.ativo) !== 1 ||
+    !(await verificarSenha(d.senha, usuario.senha_hash))
+  ) {
+    throw new ErroHttp(401, 'E-mail ou senha incorretos.');
+  }
 
-  res.status(codigo === 'ER_DUP_ENTRY' ? 409 : 400).json({
-    erro: mensagem
+  const sessao = iniciarSessao(usuario.id);
+
+  res.json({
+    ...sessao,
+    usuario: usuarioPublico(usuario)
   });
-}
-
-/* USUÁRIOS */
-
-router.get('/usuarios', async (_req, res) => {
-  try {
-    res.json(await UsuarioModel.findAll());
-  } catch (e) {
-    erro(res, e);
-  }
 });
 
-router.get('/usuarios/:id', async (req, res) => {
-  try {
-    const usuario = await UsuarioModel.findById(obterId(req));
+router.use(exigirLogin);
 
-    if (!usuario) {
-      res.status(404).json({ erro: 'Usuário não encontrado.' });
-      return;
-    }
-
-    res.json(usuario);
-  } catch (e) {
-    erro(res, e);
-  }
+router.get('/auth/me', (req, res) => {
+  res.json(usuarioPublico(usuarioAtual(req)));
 });
 
-router.post('/usuarios', async (req, res) => {
-  try {
-    const id = await UsuarioModel.create(req.body);
-    res.status(201).json(await UsuarioModel.findById(id));
-  } catch (e) {
-    erro(res, e);
-  }
+router.post('/auth/logout', (req, res) => {
+  encerrarSessao(tokenAtual(req));
+  res.json({ mensagem: 'Sessão encerrada.' });
 });
 
-router.put('/usuarios/:id', async (req, res) => {
-  try {
-    const id = obterId(req);
-    const atualizado = await UsuarioModel.update(id, req.body);
+// USUÁRIOS
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Usuário não encontrado.' });
-      return;
-    }
-
-    res.json(await UsuarioModel.findById(id));
-  } catch (e) {
-    erro(res, e);
-  }
+router.get('/usuarios', exigirGerente, async (_req, res) => {
+  const usuarios = await UsuarioModel.findAll();
+  res.json(usuarios.map(usuarioPublico));
 });
 
-router.patch('/usuarios/:id/inativar', async (req, res) => {
-  try {
-    const atualizado = await UsuarioModel.inactivate(obterId(req));
+router.get('/usuarios/:id', exigirGerente, async (req, res) => {
+  const usuario = await UsuarioModel.findById(
+    idParametro(req.params.id)
+  );
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Usuário não encontrado.' });
-      return;
-    }
-
-    res.json({ mensagem: 'Usuário inativado.' });
-  } catch (e) {
-    erro(res, e);
+  if (!usuario) {
+    throw new ErroHttp(404, 'Usuário não encontrado.');
   }
+
+  res.json(usuarioPublico(usuario));
 });
 
-/* CLIENTES */
+router.post('/usuarios', exigirGerente, async (req, res) => {
+  const entrada = dadosUsuario(req.body);
+
+  if (!entrada.senha) {
+    throw new ErroHttp(400, 'Informe uma senha para o usuário.');
+  }
+
+  const senha_hash = await gerarHashSenha(entrada.senha);
+
+  const id = await UsuarioModel.create({
+    nome: entrada.nome,
+    email: entrada.email,
+    perfil: entrada.perfil,
+    senha_hash
+  });
+
+  const criado = await UsuarioModel.findById(id);
+
+  res.status(201).json(
+    criado ? usuarioPublico(criado) : { id }
+  );
+});
+
+router.put('/usuarios/:id', exigirGerente, async (req, res) => {
+  const id = idParametro(req.params.id);
+  const atual = await UsuarioModel.findById(id);
+
+  if (!atual) {
+    throw new ErroHttp(404, 'Usuário não encontrado.');
+  }
+
+  const entrada = dadosUsuario(req.body);
+
+  const senha_hash = entrada.senha === undefined
+    ? atual.senha_hash
+    : await gerarHashSenha(entrada.senha);
+
+  await UsuarioModel.update(id, {
+    nome: entrada.nome,
+    email: entrada.email,
+    perfil: entrada.perfil,
+    senha_hash
+  });
+
+  const atualizado = await UsuarioModel.findById(id);
+
+  res.json(
+    atualizado ? usuarioPublico(atualizado) : { id }
+  );
+});
+
+router.patch('/usuarios/:id/inativar', exigirGerente, async (req, res) => {
+  const id = idParametro(req.params.id);
+
+  if (id === usuarioAtual(req).id) {
+    throw new ErroHttp(
+      409,
+      'Não é permitido inativar sua própria conta.'
+    );
+  }
+
+  const alterado = await UsuarioModel.inactivate(id);
+
+  if (!alterado) {
+    throw new ErroHttp(404, 'Usuário não encontrado.');
+  }
+
+  res.json({ mensagem: 'Usuário inativado.' });
+});
+
+// CLIENTES
 
 router.get('/clientes', async (_req, res) => {
-  try {
-    res.json(await ClienteModel.findAll());
-  } catch (e) {
-    erro(res, e);
-  }
+  res.json(await ClienteModel.findAll());
 });
 
 router.get('/clientes/:id', async (req, res) => {
-  try {
-    const cliente = await ClienteModel.findById(obterId(req));
+  const cliente = await ClienteModel.findById(
+    idParametro(req.params.id)
+  );
 
-    if (!cliente) {
-      res.status(404).json({ erro: 'Cliente não encontrado.' });
-      return;
-    }
-
-    res.json(cliente);
-  } catch (e) {
-    erro(res, e);
+  if (!cliente) {
+    throw new ErroHttp(404, 'Cliente não encontrado.');
   }
+
+  res.json(cliente);
+});
+
+router.get('/clientes/:id/vendas', async (req, res) => {
+  const id = idParametro(req.params.id);
+
+  if (!(await ClienteModel.findById(id))) {
+    throw new ErroHttp(404, 'Cliente não encontrado.');
+  }
+
+  res.json(await VendaModel.findByClienteId(id));
 });
 
 router.post('/clientes', async (req, res) => {
-  try {
-    const id = await ClienteModel.create(req.body);
-    res.status(201).json(await ClienteModel.findById(id));
-  } catch (e) {
-    erro(res, e);
-  }
+  const id = await ClienteModel.create(
+    dadosCliente(req.body)
+  );
+
+  res.status(201).json(
+    await ClienteModel.findById(id)
+  );
 });
 
 router.put('/clientes/:id', async (req, res) => {
-  try {
-    const id = obterId(req);
-    const atualizado = await ClienteModel.update(id, req.body);
+  const id = idParametro(req.params.id);
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Cliente não encontrado.' });
-      return;
-    }
+  const alterado = await ClienteModel.update(
+    id,
+    dadosCliente(req.body)
+  );
 
-    res.json(await ClienteModel.findById(id));
-  } catch (e) {
-    erro(res, e);
+  if (!alterado) {
+    throw new ErroHttp(404, 'Cliente não encontrado.');
   }
+
+  res.json(await ClienteModel.findById(id));
 });
 
-router.patch('/clientes/:id/inativar', async (req, res) => {
-  try {
-    const atualizado = await ClienteModel.inactivate(obterId(req));
+router.patch('/clientes/:id/inativar', exigirGerente, async (req, res) => {
+  const alterado = await ClienteModel.inactivate(
+    idParametro(req.params.id)
+  );
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Cliente não encontrado.' });
-      return;
-    }
-
-    res.json({ mensagem: 'Cliente inativado.' });
-  } catch (e) {
-    erro(res, e);
+  if (!alterado) {
+    throw new ErroHttp(404, 'Cliente não encontrado.');
   }
+
+  res.json({ mensagem: 'Cliente inativado.' });
 });
 
-/* PRODUTOS */
+// PRODUTOS
 
 router.get('/produtos', async (_req, res) => {
-  try {
-    res.json(await ProdutoModel.findAll());
-  } catch (e) {
-    erro(res, e);
-  }
+  res.json(await ProdutoModel.findAll());
 });
 
 router.get('/produtos/:id', async (req, res) => {
-  try {
-    const produto = await ProdutoModel.findById(obterId(req));
+  const produto = await ProdutoModel.findById(
+    idParametro(req.params.id)
+  );
 
-    if (!produto) {
-      res.status(404).json({ erro: 'Produto não encontrado.' });
-      return;
-    }
-
-    res.json(produto);
-  } catch (e) {
-    erro(res, e);
+  if (!produto) {
+    throw new ErroHttp(404, 'Produto não encontrado.');
   }
+
+  res.json(produto);
 });
 
-router.post('/produtos', async (req, res) => {
-  try {
-    const id = await ProdutoModel.create(req.body);
-    res.status(201).json(await ProdutoModel.findById(id));
-  } catch (e) {
-    erro(res, e);
-  }
+router.post('/produtos', exigirGerente, async (req, res) => {
+  const id = await ProdutoModel.create(
+    dadosProduto(req.body)
+  );
+
+  res.status(201).json(
+    await ProdutoModel.findById(id)
+  );
 });
 
-router.put('/produtos/:id', async (req, res) => {
-  try {
-    const id = obterId(req);
-    const atualizado = await ProdutoModel.update(id, req.body);
+router.put('/produtos/:id', exigirGerente, async (req, res) => {
+  const id = idParametro(req.params.id);
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Produto não encontrado.' });
-      return;
-    }
+  const alterado = await ProdutoModel.update(
+    id,
+    dadosProduto(req.body, true)
+  );
 
-    res.json(await ProdutoModel.findById(id));
-  } catch (e) {
-    erro(res, e);
+  if (!alterado) {
+    throw new ErroHttp(404, 'Produto não encontrado.');
   }
+
+  res.json(await ProdutoModel.findById(id));
 });
 
-router.patch('/produtos/:id/inativar', async (req, res) => {
-  try {
-    const atualizado = await ProdutoModel.inactivate(obterId(req));
+router.patch('/produtos/:id/inativar', exigirGerente, async (req, res) => {
+  const alterado = await ProdutoModel.inactivate(
+    idParametro(req.params.id)
+  );
 
-    if (!atualizado) {
-      res.status(404).json({ erro: 'Produto não encontrado.' });
-      return;
-    }
-
-    res.json({ mensagem: 'Produto inativado.' });
-  } catch (e) {
-    erro(res, e);
+  if (!alterado) {
+    throw new ErroHttp(404, 'Produto não encontrado.');
   }
+
+  res.json({ mensagem: 'Produto inativado.' });
 });
 
-/* VENDAS */
+// VENDAS
 
 router.get('/vendas', async (_req, res) => {
-  try {
-    res.json(await VendaModel.findAll());
-  } catch (e) {
-    erro(res, e);
-  }
+  res.json(await VendaModel.findAll());
 });
 
 router.get('/vendas/:id', async (req, res) => {
-  try {
-    const venda = await VendaModel.findById(obterId(req));
+  const venda = await VendaModel.findById(
+    idParametro(req.params.id)
+  );
 
-    if (!venda) {
-      res.status(404).json({ erro: 'Venda não encontrada.' });
-      return;
-    }
-
-    res.json(venda);
-  } catch (e) {
-    erro(res, e);
+  if (!venda) {
+    throw new ErroHttp(404, 'Venda não encontrada.');
   }
-});
 
-router.post('/vendas', async (req, res) => {
-  try {
-    const id = await withTransaction((conexao) =>
-      VendaModel.create(req.body, conexao)
-    );
-
-    res.status(201).json(await VendaModel.findById(id));
-  } catch (e) {
-    erro(res, e);
-  }
-});
-
-/* ITENS DA VENDA */
-
-router.get('/itens-venda', async (_req, res) => {
-  try {
-    res.json(await ItemVendaModel.findAll());
-  } catch (e) {
-    erro(res, e);
-  }
-});
-
-router.get('/itens-venda/:id', async (req, res) => {
-  try {
-    const item = await ItemVendaModel.findById(obterId(req));
-
-    if (!item) {
-      res.status(404).json({ erro: 'Item não encontrado.' });
-      return;
-    }
-
-    res.json(item);
-  } catch (e) {
-    erro(res, e);
-  }
+  res.json(venda);
 });
 
 router.get('/vendas/:id/itens', async (req, res) => {
-  try {
-    res.json(await ItemVendaModel.findByVendaId(obterId(req)));
-  } catch (e) {
-    erro(res, e);
+  const id = idParametro(req.params.id);
+
+  if (!(await VendaModel.findById(id))) {
+    throw new ErroHttp(404, 'Venda não encontrada.');
   }
+
+  res.json(await ItemVendaModel.findByVendaId(id));
 });
 
-router.post('/itens-venda', async (req, res) => {
-  try {
-    const id = await withTransaction((conexao) =>
-      ItemVendaModel.create(req.body, conexao)
-    );
+router.post('/vendas', async (req, res) => {
+  const operador = usuarioAtual(req);
 
-    res.status(201).json(await ItemVendaModel.findById(id));
-  } catch (e) {
-    erro(res, e);
+  const id = await finalizarVenda(req.body, {
+    id: operador.id,
+    perfil: operador.perfil
+  });
+
+  res.status(201).json({
+    venda: await VendaModel.findById(id),
+    itens: await ItemVendaModel.findByVendaId(id)
+  });
+});
+
+router.patch('/vendas/:id/cancelar', exigirGerente, async (req, res) => {
+  const id = idParametro(req.params.id);
+  const d = objeto(req.body);
+
+  apenasCampos(d, ['motivo']);
+
+  const motivo = texto(d, 'motivo', 255);
+
+  await cancelarVenda(
+    id,
+    usuarioAtual(req).id,
+    motivo
+  );
+
+  res.json({
+    mensagem: 'Venda cancelada. Estoque restaurado.',
+    venda: await VendaModel.findById(id)
+  });
+});
+
+// ITENS DE VENDA
+
+router.get('/itens-venda', async (_req, res) => {
+  res.json(await ItemVendaModel.findAll());
+});
+
+router.get('/itens-venda/:id', async (req, res) => {
+  const item = await ItemVendaModel.findById(
+    idParametro(req.params.id)
+  );
+
+  if (!item) {
+    throw new ErroHttp(404, 'Item não encontrado.');
   }
+
+  res.json(item);
+});
+
+router.post('/itens-venda', (_req, _res) => {
+  throw new ErroHttp(
+    405,
+    'Envie itens junto com POST /api/vendas.'
+  );
 });
