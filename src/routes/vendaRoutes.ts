@@ -6,7 +6,7 @@ import { ItemVendaController } from '../controllers/ItemVendaController';
 import {
   autenticar,
   somenteGerente
-} from '../middleware/AuthMiddleware';
+} from '../middleware/authMiddleware';
 
 export const vendaRoutes = Router();
 

@@ -44,3 +44,8 @@ export async function withTransaction<T>(
     conexao.release();
   }
 }
+
+export function mensagemConexao(erro: unknown): string {
+  if (erro instanceof Error) return erro.message;
+  return String(erro);
+}

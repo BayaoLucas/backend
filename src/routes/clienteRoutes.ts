@@ -5,7 +5,7 @@ import { ClienteController } from '../controllers/ClienteController';
 import {
   autenticar,
   somenteGerente
-} from '../middleware/AuthMiddleware';
+} from '../middleware/authMiddleware';
 
 export const clienteRoutes = Router();
 
