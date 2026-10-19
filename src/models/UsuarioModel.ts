@@ -4,7 +4,7 @@ import { Pool, PoolConnection } from 'mysql2/promise';
 
 import { db } from '../config/database';
 import { Usuario, NovoUsuario } from '../types';
-import { ApiError } from '../middleware/authMiddleware';
+import { ApiError } from '../middleware/AuthMiddleware';
 
 type LinhaUsuario = Usuario & RowDataPacket;
 type Conexao = Pool | PoolConnection;
