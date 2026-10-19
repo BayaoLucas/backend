@@ -1,5 +1,5 @@
-
-import express, {
+import cors from 'cors';
+import express, { 
   Request,
   Response,
   NextFunction
