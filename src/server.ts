@@ -18,7 +18,7 @@ import { UsuarioController } from './controllers/UsuarioController';
 import {
   ApiError,
   autenticar
-} from './middleware/authMiddleware';
+} from './middleware/AuthMiddleware';
 
 const app = express();
 const porta = Number(process.env.PORT || 3000);
