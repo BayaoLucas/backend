@@ -36,7 +36,6 @@ function validarProduto(valor: unknown): NovoProduto {
 
   const d = valor as Record<string, unknown>;
 
-  // O código é opcional: se vazio ou ausente, será gerado automaticamente pelo sistema
   let codigo = '';
   if (typeof d.codigo === 'string' && d.codigo.trim()) {
     if (d.codigo.trim().length > 50) {
@@ -65,12 +64,24 @@ function validarProduto(valor: unknown): NovoProduto {
     throw new ApiError(400, 'Estoque inválido.');
   }
 
+  // Validação de Gênero: 'MASCULINO', 'FEMININO', 'UNISSEX'
+  let genero: string | null = null;
+  if (typeof d.genero === 'string' && d.genero.trim()) {
+    const gen = d.genero.trim().toUpperCase();
+    if (['MASCULINO', 'FEMININO', 'UNISSEX'].includes(gen)) {
+      genero = gen;
+    } else {
+      genero = opcional(d.genero, 20);
+    }
+  }
+
   return {
     codigo,
     nome: d.nome.trim(),
     descricao: opcional(d.descricao, 10000),
     tamanho: opcional(d.tamanho, 20),
     cor: opcional(d.cor, 40),
+    genero,
     preco: Number(precoTexto).toFixed(2),
     estoque
   };
@@ -78,13 +89,14 @@ function validarProduto(valor: unknown): NovoProduto {
 
 export class ProdutoController {
   static async proximoCodigo(_req: Request, res: Response) {
-    const proximoCodigo = await ProdutoModel.obterProximoCodigoPrevisao();
-    res.json({ proximoCodigo });
+    const codigoAleatorio = await ProdutoModel.gerarCodigoAleatorioUnico();
+    res.json({ codigoAleatorio, proximoCodigo: codigoAleatorio });
   }
 
   static async listar(req: Request, res: Response) {
     const termo = req.query.termo;
     const codigo = req.query.codigo;
+    const genero = req.query.genero;
     const inativos = req.query.incluir_inativos;
 
     if (termo !== undefined &&
@@ -95,6 +107,11 @@ export class ProdutoController {
     if (codigo !== undefined &&
         (typeof codigo !== 'string' || codigo.length > 50)) {
       throw new ApiError(400, 'Código inválido.');
+    }
+
+    if (genero !== undefined &&
+        (typeof genero !== 'string' || genero.length > 30)) {
+      throw new ApiError(400, 'Gênero inválido.');
     }
 
     if (inativos !== undefined &&
@@ -113,6 +130,9 @@ export class ProdutoController {
       termo: typeof termo === 'string' ? termo.trim() : undefined,
       codigo: typeof codigo === 'string'
         ? codigo.trim().toUpperCase()
+        : undefined,
+      genero: typeof genero === 'string'
+        ? genero.trim().toUpperCase()
         : undefined,
       incluirInativos
     }));
@@ -134,7 +154,7 @@ export class ProdutoController {
     const dados = validarProduto(req.body);
 
     if (!dados.codigo) {
-      dados.codigo = await ProdutoModel.gerarProximoCodigo();
+      dados.codigo = await ProdutoModel.gerarCodigoAleatorioUnico();
     }
 
     const id = await ProdutoModel.create(dados);
@@ -148,6 +168,7 @@ export class ProdutoController {
     const id = idValido(req.params.id);
     const dados = validarProduto(req.body);
 
+    // Se o código não for informado na edição, mantém o código original existente
     if (!dados.codigo) {
       const existente = await ProdutoModel.findById(id);
       if (existente) {

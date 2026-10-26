@@ -1,5 +1,6 @@
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { Pool, PoolConnection } from 'mysql2/promise';
+import { randomBytes } from 'node:crypto';
 
 import { db } from '../config/database';
 import { Produto, NovoProduto } from '../types';
@@ -8,57 +9,29 @@ type LinhaProduto = Produto & RowDataPacket;
 type Conexao = Pool | PoolConnection;
 
 export class ProdutoModel {
-  static async gerarProximoCodigo(conexao: Conexao = db): Promise<string> {
-    await conexao.query(`
-      CREATE TABLE IF NOT EXISTS sequencia_codigos_produto (
-        numero INT AUTO_INCREMENT PRIMARY KEY
-      ) ENGINE=InnoDB;
-    `);
+  static async gerarCodigoAleatorioUnico(conexao: Conexao = db): Promise<string> {
+    const caracteres = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let codigo = '';
+    let existe = true;
 
-    const [contagem] = await conexao.query<RowDataPacket[]>(
-      'SELECT COUNT(*) as total FROM sequencia_codigos_produto'
-    );
+    while (existe) {
+      const bytes = randomBytes(6);
+      let parteAleatoria = '';
+      for (let i = 0; i < 6; i++) {
+        parteAleatoria += caracteres[bytes[i] % caracteres.length];
+      }
+      codigo = `AUR-${parteAleatoria}`;
 
-    if (Number(contagem[0]?.total || 0) === 0) {
-      const [maxProd] = await conexao.query<RowDataPacket[]>(
-        'SELECT MAX(id) as max_id FROM produtos'
+      const [linhas] = await conexao.execute<RowDataPacket[]>(
+        'SELECT id FROM produtos WHERE codigo = ? LIMIT 1',
+        [codigo]
       );
-      const inicial = Number(maxProd[0]?.max_id || 0);
-      if (inicial > 0) {
-        await conexao.query(
-          'INSERT INTO sequencia_codigos_produto (numero) VALUES (?)',
-          [inicial]
-        );
+      if (linhas.length === 0) {
+        existe = false;
       }
     }
 
-    const [res] = await conexao.execute<ResultSetHeader>(
-      'INSERT INTO sequencia_codigos_produto VALUES (NULL)'
-    );
-
-    return String(res.insertId);
-  }
-
-  static async obterProximoCodigoPrevisao(conexao: Conexao = db): Promise<string> {
-    await conexao.query(`
-      CREATE TABLE IF NOT EXISTS sequencia_codigos_produto (
-        numero INT AUTO_INCREMENT PRIMARY KEY
-      ) ENGINE=InnoDB;
-    `);
-
-    const [res] = await conexao.query<RowDataPacket[]>(
-      'SELECT MAX(numero) as max_num FROM sequencia_codigos_produto'
-    );
-
-    const maxSeq = Number(res[0]?.max_num || 0);
-    if (maxSeq > 0) {
-      return String(maxSeq + 1);
-    }
-
-    const [maxProd] = await conexao.query<RowDataPacket[]>(
-      'SELECT MAX(id) as max_id FROM produtos'
-    );
-    return String(Number(maxProd[0]?.max_id || 0) + 1);
+    return codigo;
   }
 
   static async create(
@@ -68,19 +41,20 @@ export class ProdutoModel {
     let codigo = dados.codigo ? String(dados.codigo).trim() : '';
 
     if (!codigo) {
-      codigo = await ProdutoModel.gerarProximoCodigo(conexao);
+      codigo = await ProdutoModel.gerarCodigoAleatorioUnico(conexao);
     }
 
     const [resultado] = await conexao.execute<ResultSetHeader>(
       `INSERT INTO produtos
-       (codigo, nome, descricao, tamanho, cor, preco, estoque)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (codigo, nome, descricao, tamanho, cor, genero, preco, estoque)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         codigo,
         dados.nome,
         dados.descricao ?? null,
         dados.tamanho ?? null,
         dados.cor ?? null,
+        dados.genero ?? null,
         dados.preco,
         dados.estoque ?? 0
       ]
@@ -117,6 +91,7 @@ export class ProdutoModel {
     filtros: {
       termo?: string;
       codigo?: string;
+      genero?: string;
       incluirInativos?: boolean;
     } = {},
     conexao: Conexao = db
@@ -135,10 +110,15 @@ export class ProdutoModel {
       const termo = `%${filtros.termo}%`;
 
       condicoes.push(
-        '(nome LIKE ? OR codigo LIKE ? OR descricao LIKE ?)'
+        '(nome LIKE ? OR codigo LIKE ? OR descricao LIKE ? OR cor LIKE ?)'
       );
 
-      valores.push(termo, termo, termo);
+      valores.push(termo, termo, termo, termo);
+    }
+
+    if (filtros.genero) {
+      condicoes.push('genero = ?');
+      valores.push(filtros.genero);
     }
 
     const where = condicoes.length
@@ -149,7 +129,7 @@ export class ProdutoModel {
       `SELECT *
        FROM produtos
        ${where}
-       ORDER BY id ASC
+       ORDER BY id DESC
        LIMIT 100`,
       valores
     );
@@ -165,7 +145,7 @@ export class ProdutoModel {
     const [resultado] = await conexao.execute<ResultSetHeader>(
       `UPDATE produtos
        SET codigo = ?, nome = ?, descricao = ?,
-           tamanho = ?, cor = ?, preco = ?, estoque = ?
+           tamanho = ?, cor = ?, genero = ?, preco = ?, estoque = ?
        WHERE id = ?`,
       [
         dados.codigo,
@@ -173,6 +153,7 @@ export class ProdutoModel {
         dados.descricao ?? null,
         dados.tamanho ?? null,
         dados.cor ?? null,
+        dados.genero ?? null,
         dados.preco,
         dados.estoque ?? 0,
         id
@@ -192,6 +173,28 @@ export class ProdutoModel {
       [ativo ? 1 : 0, id]
     );
 
+    return resultado.affectedRows > 0;
+  }
+
+  static async temVendasAssociadas(
+    id: number,
+    conexao: Conexao = db
+  ): Promise<boolean> {
+    const [linhas] = await conexao.execute<RowDataPacket[]>(
+      'SELECT id FROM itens_venda WHERE produto_id = ? LIMIT 1',
+      [id]
+    );
+    return linhas.length > 0;
+  }
+
+  static async delete(
+    id: number,
+    conexao: Conexao = db
+  ): Promise<boolean> {
+    const [resultado] = await conexao.execute<ResultSetHeader>(
+      'DELETE FROM produtos WHERE id = ?',
+      [id]
+    );
     return resultado.affectedRows > 0;
   }
 

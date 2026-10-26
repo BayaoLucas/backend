@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { VendaController } from '../controllers/VendaController';
 import { ItemVendaController } from '../controllers/ItemVendaController';
 
+import axios from 'axios';
 import {
   autenticar,
   somenteGerente
@@ -11,6 +12,28 @@ import {
 export const vendaRoutes = Router();
 
 vendaRoutes.use(autenticar);
+
+// Exemplo de como obter o token do cabeçalho da requisição
+vendaRoutes.get('/vendas', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]; // Extrai o token do cabeçalho Authorization
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
+
+  axios
+    .get('/vendas', {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    .then((response: { data: any; }) => {
+      res.json(response.data);
+    })
+    .catch(error => {
+      res.status(500).json({ error: error.message });
+    });
+});
 
 vendaRoutes.post(
   '/simular',

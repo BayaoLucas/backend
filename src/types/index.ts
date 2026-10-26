@@ -1,4 +1,3 @@
-
 export type PerfilUsuario = 'CAIXA' | 'GERENTE';
 
 export type FormaPagamento =
@@ -56,6 +55,7 @@ export interface Produto {
   descricao: string | null;
   tamanho: string | null;
   cor: string | null;
+  genero?: string | null;
   preco: Decimal;
   estoque: number;
   ativo: Ativo;
@@ -68,6 +68,7 @@ export interface NovoProduto {
   descricao?: string | null;
   tamanho?: string | null;
   cor?: string | null;
+  genero?: string | null;
   preco: Decimal;
   estoque?: number;
 }
