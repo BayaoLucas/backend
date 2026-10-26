@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express';
 import { ProdutoModel } from '../models/ProdutoModel';
 import { NovoProduto } from '../types';
@@ -31,16 +30,19 @@ function opcional(valor: unknown, limite: number): string | null {
 }
 
 function validarProduto(valor: unknown): NovoProduto {
-  if (!valor || typeof valor !== 'object' ||
-      Array.isArray(valor)) {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) {
     throw new ApiError(400, 'Envie um JSON válido.');
   }
 
   const d = valor as Record<string, unknown>;
 
-  if (typeof d.codigo !== 'string' ||
-      !d.codigo.trim() || d.codigo.trim().length > 50) {
-    throw new ApiError(400, 'Código inválido.');
+  // O código é opcional: se vazio ou ausente, será gerado automaticamente pelo sistema
+  let codigo = '';
+  if (typeof d.codigo === 'string' && d.codigo.trim()) {
+    if (d.codigo.trim().length > 50) {
+      throw new ApiError(400, 'Código inválido.');
+    }
+    codigo = d.codigo.trim().toUpperCase();
   }
 
   if (typeof d.nome !== 'string' ||
@@ -64,7 +66,7 @@ function validarProduto(valor: unknown): NovoProduto {
   }
 
   return {
-    codigo: d.codigo.trim().toUpperCase(),
+    codigo,
     nome: d.nome.trim(),
     descricao: opcional(d.descricao, 10000),
     tamanho: opcional(d.tamanho, 20),
@@ -75,6 +77,11 @@ function validarProduto(valor: unknown): NovoProduto {
 }
 
 export class ProdutoController {
+  static async proximoCodigo(_req: Request, res: Response) {
+    const proximoCodigo = await ProdutoModel.obterProximoCodigoPrevisao();
+    res.json({ proximoCodigo });
+  }
+
   static async listar(req: Request, res: Response) {
     const termo = req.query.termo;
     const codigo = req.query.codigo;
@@ -125,6 +132,11 @@ export class ProdutoController {
 
   static async cadastrar(req: Request, res: Response) {
     const dados = validarProduto(req.body);
+
+    if (!dados.codigo) {
+      dados.codigo = await ProdutoModel.gerarProximoCodigo();
+    }
+
     const id = await ProdutoModel.create(dados);
 
     res.status(201).json(
@@ -135,6 +147,13 @@ export class ProdutoController {
   static async atualizar(req: Request, res: Response) {
     const id = idValido(req.params.id);
     const dados = validarProduto(req.body);
+
+    if (!dados.codigo) {
+      const existente = await ProdutoModel.findById(id);
+      if (existente) {
+        dados.codigo = existente.codigo;
+      }
+    }
 
     if (!(await ProdutoModel.update(id, dados))) {
       throw new ApiError(404, 'Produto não encontrado.');

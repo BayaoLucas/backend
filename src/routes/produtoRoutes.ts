@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { ProdutoController } from '../controllers/ProdutoController';
 
@@ -14,6 +13,11 @@ produtoRoutes.use(autenticar);
 produtoRoutes.get(
   '/',
   ProdutoController.listar
+);
+
+produtoRoutes.get(
+  '/proximo-codigo',
+  ProdutoController.proximoCodigo
 );
 
 produtoRoutes.get(

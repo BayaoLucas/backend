@@ -1,4 +1,3 @@
-
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { Pool, PoolConnection } from 'mysql2/promise';
 
@@ -9,16 +8,75 @@ type LinhaProduto = Produto & RowDataPacket;
 type Conexao = Pool | PoolConnection;
 
 export class ProdutoModel {
+  static async gerarProximoCodigo(conexao: Conexao = db): Promise<string> {
+    await conexao.query(`
+      CREATE TABLE IF NOT EXISTS sequencia_codigos_produto (
+        numero INT AUTO_INCREMENT PRIMARY KEY
+      ) ENGINE=InnoDB;
+    `);
+
+    const [contagem] = await conexao.query<RowDataPacket[]>(
+      'SELECT COUNT(*) as total FROM sequencia_codigos_produto'
+    );
+
+    if (Number(contagem[0]?.total || 0) === 0) {
+      const [maxProd] = await conexao.query<RowDataPacket[]>(
+        'SELECT MAX(id) as max_id FROM produtos'
+      );
+      const inicial = Number(maxProd[0]?.max_id || 0);
+      if (inicial > 0) {
+        await conexao.query(
+          'INSERT INTO sequencia_codigos_produto (numero) VALUES (?)',
+          [inicial]
+        );
+      }
+    }
+
+    const [res] = await conexao.execute<ResultSetHeader>(
+      'INSERT INTO sequencia_codigos_produto VALUES (NULL)'
+    );
+
+    return String(res.insertId);
+  }
+
+  static async obterProximoCodigoPrevisao(conexao: Conexao = db): Promise<string> {
+    await conexao.query(`
+      CREATE TABLE IF NOT EXISTS sequencia_codigos_produto (
+        numero INT AUTO_INCREMENT PRIMARY KEY
+      ) ENGINE=InnoDB;
+    `);
+
+    const [res] = await conexao.query<RowDataPacket[]>(
+      'SELECT MAX(numero) as max_num FROM sequencia_codigos_produto'
+    );
+
+    const maxSeq = Number(res[0]?.max_num || 0);
+    if (maxSeq > 0) {
+      return String(maxSeq + 1);
+    }
+
+    const [maxProd] = await conexao.query<RowDataPacket[]>(
+      'SELECT MAX(id) as max_id FROM produtos'
+    );
+    return String(Number(maxProd[0]?.max_id || 0) + 1);
+  }
+
   static async create(
     dados: NovoProduto,
     conexao: Conexao = db
   ): Promise<number> {
+    let codigo = dados.codigo ? String(dados.codigo).trim() : '';
+
+    if (!codigo) {
+      codigo = await ProdutoModel.gerarProximoCodigo(conexao);
+    }
+
     const [resultado] = await conexao.execute<ResultSetHeader>(
       `INSERT INTO produtos
        (codigo, nome, descricao, tamanho, cor, preco, estoque)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        dados.codigo,
+        codigo,
         dados.nome,
         dados.descricao ?? null,
         dados.tamanho ?? null,
@@ -91,7 +149,7 @@ export class ProdutoModel {
       `SELECT *
        FROM produtos
        ${where}
-       ORDER BY nome ASC
+       ORDER BY id ASC
        LIMIT 100`,
       valores
     );
