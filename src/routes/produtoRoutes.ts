@@ -21,6 +21,11 @@ produtoRoutes.get(
 );
 
 produtoRoutes.get(
+  '/catalogo',
+  ProdutoController.listarCatalogo
+);
+
+produtoRoutes.get(
   '/:id',
   ProdutoController.detalhar
 );
@@ -47,4 +52,22 @@ produtoRoutes.patch(
   '/:id/reativar',
   somenteGerente,
   ProdutoController.reativar
+);
+
+produtoRoutes.patch(
+  '/:id/ocultar-catalogo',
+  somenteGerente,
+  ProdutoController.ocultarCatalogo
+);
+
+produtoRoutes.patch(
+  '/:id/exibir-catalogo',
+  somenteGerente,
+  ProdutoController.exibirCatalogo
+);
+
+produtoRoutes.delete(
+  '/:id',
+  somenteGerente,
+  ProdutoController.excluir
 );

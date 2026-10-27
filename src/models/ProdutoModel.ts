@@ -46,8 +46,8 @@ export class ProdutoModel {
 
     const [resultado] = await conexao.execute<ResultSetHeader>(
       `INSERT INTO produtos
-       (codigo, nome, descricao, tamanho, cor, genero, preco, estoque)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (codigo, nome, descricao, tamanho, cor, genero, preco, estoque, imagem_url, visivel_catalogo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         codigo,
         dados.nome,
@@ -56,7 +56,9 @@ export class ProdutoModel {
         dados.cor ?? null,
         dados.genero ?? null,
         dados.preco,
-        dados.estoque ?? 0
+        dados.estoque ?? 0,
+        dados.imagem_url ?? null,
+        dados.visivel_catalogo ?? 1
       ]
     );
 
@@ -145,7 +147,8 @@ export class ProdutoModel {
     const [resultado] = await conexao.execute<ResultSetHeader>(
       `UPDATE produtos
        SET codigo = ?, nome = ?, descricao = ?,
-           tamanho = ?, cor = ?, genero = ?, preco = ?, estoque = ?
+           tamanho = ?, cor = ?, genero = ?, preco = ?, estoque = ?,
+           imagem_url = ?, visivel_catalogo = ?
        WHERE id = ?`,
       [
         dados.codigo,
@@ -156,6 +159,8 @@ export class ProdutoModel {
         dados.genero ?? null,
         dados.preco,
         dados.estoque ?? 0,
+        dados.imagem_url ?? null,
+        dados.visivel_catalogo ?? 1,
         id
       ]
     );
@@ -173,6 +178,18 @@ export class ProdutoModel {
       [ativo ? 1 : 0, id]
     );
 
+    return resultado.affectedRows > 0;
+  }
+
+  static async setVisivelCatalogo(
+    id: number,
+    visivel: boolean,
+    conexao: Conexao = db
+  ): Promise<boolean> {
+    const [resultado] = await conexao.execute<ResultSetHeader>(
+      'UPDATE produtos SET visivel_catalogo = ? WHERE id = ?',
+      [visivel ? 1 : 0, id]
+    );
     return resultado.affectedRows > 0;
   }
 

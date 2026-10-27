@@ -59,6 +59,8 @@ export interface Produto {
   preco: Decimal;
   estoque: number;
   ativo: Ativo;
+  imagem_url: string | null;
+  visivel_catalogo: Ativo;
   criado_em: Date;
 }
 
@@ -71,6 +73,8 @@ export interface NovoProduto {
   genero?: string | null;
   preco: Decimal;
   estoque?: number;
+  imagem_url?: string | null;
+  visivel_catalogo?: Ativo;
 }
 
 export interface Venda {
@@ -84,6 +88,7 @@ export interface Venda {
   desconto_valor: Decimal;
   total: Decimal;
   forma_pagamento: FormaPagamento;
+  parcelas: number;
   status: StatusVenda;
   realizada_em: Date;
   cancelada_em: Date | null;
@@ -97,6 +102,7 @@ export interface NovaVenda {
   subtotal: Decimal;
   desconto_percentual?: Decimal;
   forma_pagamento: FormaPagamento;
+  parcelas?: number;
 }
 
 export interface ItemVenda {

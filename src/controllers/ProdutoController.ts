@@ -75,6 +75,18 @@ function validarProduto(valor: unknown): NovoProduto {
     }
   }
 
+  // imagem_url: deve ser string válida ou null
+  let imagem_url: string | null = null;
+  if (typeof d.imagem_url === 'string' && d.imagem_url.trim()) {
+    if (d.imagem_url.trim().length > 500) {
+      throw new ApiError(400, 'URL da imagem muito longa.');
+    }
+    imagem_url = d.imagem_url.trim();
+  }
+
+  // visivel_catalogo: boolean
+  const visivel_catalogo = d.visivel_catalogo === false || d.visivel_catalogo === 0 ? 0 : 1;
+
   return {
     codigo,
     nome: d.nome.trim(),
@@ -83,7 +95,9 @@ function validarProduto(valor: unknown): NovoProduto {
     cor: opcional(d.cor, 40),
     genero,
     preco: Number(precoTexto).toFixed(2),
-    estoque
+    estoque,
+    imagem_url,
+    visivel_catalogo: visivel_catalogo as 0 | 1
   };
 }
 
@@ -201,5 +215,46 @@ export class ProdutoController {
     }
 
     res.json({ mensagem: 'Produto reativado.' });
+  }
+
+  static async ocultarCatalogo(req: Request, res: Response) {
+    const id = idValido(req.params.id);
+    if (!(await ProdutoModel.setVisivelCatalogo(id, false))) {
+      throw new ApiError(404, 'Produto não encontrado.');
+    }
+    res.json({ mensagem: 'Produto ocultado do catálogo.' });
+  }
+
+  static async exibirCatalogo(req: Request, res: Response) {
+    const id = idValido(req.params.id);
+    if (!(await ProdutoModel.setVisivelCatalogo(id, true))) {
+      throw new ApiError(404, 'Produto não encontrado.');
+    }
+    res.json({ mensagem: 'Produto exibido no catálogo.' });
+  }
+
+  static async excluir(req: Request, res: Response) {
+    const id = idValido(req.params.id);
+
+    // Verifica se há vendas vinculadas ao produto
+    const temVendas = await ProdutoModel.temVendasAssociadas(id);
+    if (temVendas) {
+      throw new ApiError(
+        400,
+        'Não é possível excluir um produto que já possui histórico de vendas. Use a opção de desativar.'
+      );
+    }
+
+    if (!(await ProdutoModel.delete(id))) {
+      throw new ApiError(404, 'Produto não encontrado.');
+    }
+
+    res.json({ mensagem: 'Produto excluído permanentemente.' });
+  }
+
+  static async listarCatalogo(_req: Request, res: Response) {
+    // Catálogo público: produtos ativos, visíveis, com estoque >= 0
+    const produtos = await ProdutoModel.findAll({ incluirInativos: false });
+    res.json(produtos.filter(p => Number(p.visivel_catalogo) === 1));
   }
 }
